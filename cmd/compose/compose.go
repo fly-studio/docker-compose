@@ -301,6 +301,7 @@ func RootCommand(dockerCli command.Cli, backend api.Service) *cobra.Command {
 	}
 
 	command.AddCommand(
+		deployCommand(&opts, backend),
 		upCommand(&opts, backend),
 		downCommand(&opts, backend),
 		startCommand(&opts, backend),
