@@ -77,7 +77,7 @@ require (
 	github.com/matttproud/golang_protobuf_extensions v1.0.2-0.20181231171920-c182affec369 // indirect
 	github.com/mgutz/ansi v0.0.0-20170206155736-9520e82c474b // indirect
 	github.com/miekg/pkcs11 v1.1.1 // indirect
-	github.com/mitchellh/mapstructure v1.5.0 // indirect
+	github.com/mitchellh/mapstructure v1.5.0
 	github.com/moby/locker v1.0.1 // indirect
 	github.com/moby/sys/signal v0.6.0 // indirect
 	github.com/moby/sys/symlink v0.2.0 // indirect
@@ -131,9 +131,20 @@ require (
 )
 
 require (
+	github.com/bitly/go-simplejson v0.5.0
+	github.com/goplus/igop v0.7.6
+)
+
+require (
 	github.com/cyberphone/json-canonicalization v0.0.0-20210303052042-6bc126869bf4 // indirect
+	github.com/goplus/reflectx v0.8.10 // indirect
+	github.com/petermattis/goid v0.0.0-20220331194723-8ee3e6ded87a // indirect
+	github.com/visualfc/funcval v0.1.3 // indirect
+	github.com/visualfc/xtype v0.1.0 // indirect
 	github.com/zmap/zcrypto v0.0.0-20220605182715-4dfcec6e9a8c // indirect
 	github.com/zmap/zlint v1.1.0 // indirect
+	golang.org/x/mod v0.6.0-dev.0.20220419223038-86c51ed26bb4 // indirect
+	golang.org/x/tools v0.1.11 // indirect
 )
 
 replace (

@@ -17,197 +17,102 @@
 package compose
 
 import (
-	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"github.com/compose-spec/compose-go/types"
-	"github.com/mitchellh/mapstructure"
-	"github.com/spf13/cobra"
-	"io"
-	"net/http"
-	"net/url"
-	"os"
-	"path/filepath"
-	"strconv"
-	"strings"
-
 	"github.com/docker/compose/v2/pkg/api"
 	"github.com/docker/compose/v2/pkg/utils"
+	"github.com/spf13/cobra"
 )
 
-type deployOptions struct {
-	upOptions
-
-	serverId int
-	force    bool
-}
-
 func deployCommand(p *projectOptions, backend api.Service) *cobra.Command {
-	deploy := deployOptions{}
+	up := upOptions{}
 	create := createOptions{}
+	pull := pullOptions{projectOptions: p}
 	deployCmd := &cobra.Command{
-		Use:   "deploy [SERVICE...]",
-		Short: "Deploy containers(make dirs, download configs, replace server data, and start containers)",
+		Use:                "deploy [SERVICE...]",
+		Short:              "Deploy containers(pull, up, and support executing pre-deploy/post-deploy shell, even executing gop)",
+		FParseErrWhitelist: cobra.FParseErrWhitelist{UnknownFlags: true},
 		PreRunE: AdaptCmd(func(ctx context.Context, cmd *cobra.Command, args []string) error {
 			create.timeChanged = cmd.Flags().Changed("timeout")
-			return validateFlags(&deploy.upOptions, &create)
+
+			pull.quiet = create.quietPull
+			return validateFlags(&up, &create)
 		}),
 		RunE: p.WithServices(func(ctx context.Context, project *types.Project, services []string) error {
 			create.ignoreOrphans = utils.StringToBool(project.Environment["COMPOSE_IGNORE_ORPHANS"])
 			if create.ignoreOrphans && create.removeOrphans {
 				return fmt.Errorf("COMPOSE_IGNORE_ORPHANS and --remove-orphans cannot be combined")
 			}
-			return runDeploy(ctx, backend, create, deploy, project, services)
+			return runDeploy(ctx, backend, create, up, pull, project, services)
 		}),
 		ValidArgsFunction: serviceCompletion(p),
 	}
-	flags := deployCmd.Flags()
-	flags.AddFlagSet(upCommand(p, backend).Flags())
 
-	flags.IntVarP(&deploy.serverId, "server-id", "s", 0, "the serverId of current host os.")
-	flags.BoolVarP(&deploy.force, "force", "f", false, "force download config.")
+	// 將cmd通過context傳遞
+	ctx := context.WithValue(context.Background(), "cmd", deployCmd)
+	deployCmd.SetContext(ctx)
+
+	flags := deployCmd.Flags()
+	flags.BoolVarP(&up.Detach, "detach", "d", false, "Detached mode: Run containers in the background")
+	flags.BoolVar(&create.Build, "build", false, "Build images before starting containers.")
+	flags.BoolVar(&create.noBuild, "no-build", false, "Don't build an image, even if it's missing.")
+	flags.BoolVar(&create.removeOrphans, "remove-orphans", false, "Remove containers for services not defined in the Compose file.")
+	flags.StringArrayVar(&up.scale, "scale", []string{}, "Scale SERVICE to NUM instances. Overrides the `scale` setting in the Compose file if present.")
+	flags.BoolVar(&up.noColor, "no-color", false, "Produce monochrome output.")
+	flags.BoolVar(&up.noPrefix, "no-log-prefix", false, "Don't print prefix in logs.")
+	flags.BoolVar(&create.forceRecreate, "force-recreate", false, "Recreate containers even if their configuration and image haven't changed.")
+	flags.BoolVar(&create.noRecreate, "no-recreate", false, "If containers already exist, don't recreate them. Incompatible with --force-recreate.")
+	flags.BoolVar(&up.noStart, "no-start", false, "Don't start the services after creating them.")
+	flags.BoolVar(&up.cascadeStop, "abort-on-container-exit", false, "Stops all containers if any container was stopped. Incompatible with -d")
+	flags.StringVar(&up.exitCodeFrom, "exit-code-from", "", "Return the exit code of the selected service container. Implies --abort-on-container-exit")
+	flags.IntVarP(&create.timeout, "timeout", "t", 10, "Use this timeout in seconds for container shutdown when attached or when containers are already running.")
+	flags.BoolVar(&up.noDeps, "no-deps", false, "Don't start linked services.")
+	flags.BoolVar(&create.recreateDeps, "always-recreate-deps", false, "Recreate dependent containers. Incompatible with --no-recreate.")
+	flags.BoolVarP(&create.noInherit, "renew-anon-volumes", "V", false, "Recreate anonymous volumes instead of retrieving data from the previous containers.")
+	flags.BoolVar(&up.attachDependencies, "attach-dependencies", false, "Attach to dependent containers.")
+	flags.BoolVar(&create.quietPull, "quiet-pull", false, "Pull without printing progress information.")
+	flags.StringArrayVar(&up.attach, "attach", []string{}, "Attach to service output.")
+	flags.BoolVar(&up.wait, "wait", false, "Wait for services to be running|healthy. Implies detached mode.")
+
+	flags.Bool("pull", false, "pull image if necessary")
 
 	return deployCmd
 }
 
-func runDeploy(ctx context.Context, backend api.Service, createOptions createOptions, deployOptions deployOptions, project *types.Project, services []string) error {
+func runDeploy(ctx context.Context, backend api.Service, createOptions createOptions, upOptions upOptions, pullOptions pullOptions, project *types.Project, services []string) error {
 	if len(project.Services) == 0 {
 		return fmt.Errorf("no service selected")
 	}
 
-	var serverApi string
-	if serverApi, _ = project.Environment["SERVER_API"]; serverApi == "" {
-		return fmt.Errorf("miss \"SERVER_API\" in Environment")
-	} else if _, err := url.ParseRequestURI(serverApi); err != nil {
-		return fmt.Errorf("invalid \"SERVER_API\" in Environment: %w", err)
-	}
-
-	for _, service := range project.Services {
-		fmt.Println("initial services:", service.Name)
-		for _, conf := range service.Configs {
-			fmt.Println("\t", "read config:", conf.Source)
-			if err := downloadConfig(&deployOptions, project, conf.Source); err != nil {
-				return fmt.Errorf("read config \"%s\" error: %w", conf.Source, err)
-			}
-		}
-	}
-
-	return runUp(ctx, backend, createOptions, deployOptions.upOptions, project, services)
-}
-
-func downloadConfig(deployOptions *deployOptions, project *types.Project, name string) error {
-	conf, ok := project.Configs[name]
+	cmd, ok := ctx.Value("cmd").(*cobra.Command)
 	if !ok {
-		return fmt.Errorf("config \"%s\" not exists", name)
+		panic("cannot get the cmd from context")
+	}
+	h := hook{
+		ctx:     ctx,
+		cmd:     cmd,
+		project: project,
+		backend: backend,
+	}
+	if err := h.parse(); err != nil {
+		return err
 	}
 
-	// 存在則不下載，除非強制下載
-	if !deployOptions.force && pathExists(conf.File) {
-		return nil
+	if err := h.PreDeploy(createOptions, upOptions, pullOptions, services); err != nil {
+		return err
 	}
 
-	// 需要下載配置
-	if xDownloadMap, ok := conf.Extensions["x-download"]; ok {
-		var xDownload xDownload
-		if err := mapstructure.Decode(xDownloadMap, &xDownload); err != nil {
+	pullEnable, _ := cmd.Flags().GetBool("pull")
+	if pullEnable {
+		if err := runPull(h.ctx, h.backend, pullOptions, services); err != nil {
 			return err
 		}
-		fmt.Println("\t", "download config file:", conf.File)
-		if err := download(xDownload, conf.File); err != nil {
-			return err
-		}
-
-	}
-	// 沒有傳遞 --server-id
-	if deployOptions.serverId <= 0 {
-		return nil
-	}
-	// 需要替換server的內容，只支援json格式
-	if _, ok = conf.Extensions["x-standalone-server"]; ok {
-		fmt.Println("\t", "get/replace server information to config file:", conf.File, "of server-id:", deployOptions.serverId)
-		return replaceServerInformation(conf.File, project.Environment["SERVER_API"], deployOptions.serverId)
 	}
 
-	return nil
-}
-
-type xDownload struct {
-	Url     string            `mapstructure:"url"`
-	Headers map[string]string `mapstructure:"headers"`
-}
-
-func download(xDownload xDownload, path string) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o644); err != nil {
+	if err := runUp(h.ctx, h.backend, createOptions, upOptions, h.project, services); err != nil {
 		return err
 	}
 
-	request, err := http.NewRequest(http.MethodGet, xDownload.Url, nil)
-	if err != nil {
-		return err
-	}
-	for k, v := range xDownload.Headers {
-		request.Header.Set(k, v)
-	}
-	response, err := http.DefaultClient.Do(request)
-	if err != nil {
-		return err
-	}
-	defer response.Body.Close()
-
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	_, err = io.Copy(f, response.Body)
-	return err
-}
-
-func replaceServerInformation(jsonFile, serverApi string, serverId int) error {
-	// 遠端讀取server信息
-	response, err := http.Get(strings.ReplaceAll(serverApi, "{server_id}", strconv.Itoa(serverId)))
-	if err != nil {
-		return err
-	}
-	defer response.Body.Close()
-	server, err := io.ReadAll(response.Body)
-	if err != nil {
-		return err
-	} else if !bytes.Contains(server, []byte("\"name\"")) {
-		return fmt.Errorf("get server information error: %d", serverId)
-	}
-	// 讀取配置文件並替換
-	f, err := os.OpenFile(jsonFile, os.O_RDWR, 0o644)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	// 讀取配置
-	buf, err := io.ReadAll(f)
-	if err != nil {
-		return err
-	}
-
-	buf = bytes.ReplaceAll(buf, []byte("{-server-}"), server)
-
-	if _, err = f.Seek(0, io.SeekStart); err != nil {
-		return err
-	}
-	if err = f.Truncate(0); err != nil {
-		return err
-	}
-	if _, err = f.Write(buf); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func pathExists(path string) bool {
-	_, err := os.Stat(path)
-	if errors.Is(err, os.ErrNotExist) {
-		return false
-	}
-	return err == nil
+	return h.PostDeploy(createOptions, upOptions, pullOptions, services)
 }
