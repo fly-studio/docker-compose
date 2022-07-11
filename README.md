@@ -12,13 +12,13 @@ Copy the [release](https://github.com/fly-studio/docker-compose/releases) to
 /usr/libexec/docker/cli-plugins/docker-compose 
 ```
 
-or (ln -s from above is recommended)
+or (`ln -s` is recommended)
 
 ```
 /usr/bin/docker-compose
 ```
 
-## Features
+## Usage
 
 ### docker compose deploy --pull --hook
 
@@ -27,18 +27,20 @@ or (ln -s from above is recommended)
 - `--pull` (default: false): pull the image before `up`
 - `--hook` (default: false): executing some command before/after `up`
 
-### Execution sequence
+You can set custom arguments(see [cli example](#CLI)), they can be read in the shell/golang scripts
 
-- `docker compose pull`
-- **pre-deploy** of x-hooks
-    - command 1
-    - command 2
-    - ...
-- `docker compose up`
-- **post-deploy** of x-hooks
-    - command 1
-    - command 2
-    - ...
+## Execution sequence
+
+1. `docker compose pull`
+2. **pre-deploy** of hooks
+   1. command 1
+   2. command 2
+   3. ...
+3. `docker compose up`
+4. **post-deploy** of hooks
+    1. command 1
+    2. command 2
+    3. ...
 
 ## Examples
 
@@ -55,7 +57,7 @@ Files were in `/this/project/examples/`, copy to `/a/b/` where you want to put
       - abc.sh
 ```
 
-docker-compose.yaml:
+### docker-compose.yaml
 ```
 x-hooks:
   pre-deploy:
@@ -69,38 +71,34 @@ services:
   ...
 ```
 
-## Usage
+### CLI
 
 like `docker compose up`
 
 ```
 docker compose -f '/a/b/docker-compose.yaml' deploy service-1 service-2 -d --hook --other-arg1 --other-arg2
 ```
-
 or
 ```
 cd /a/b/
 docker compose deploy service-1 service-2 -d --hook --other-arg1 --other-arg2
 ```
 
-You can set custom arguments, they can be read in the shell/golang scripts
-
 ## Hooks
 
-Executing some command/shell/go scripts before/after `up`
+Executing command/shell/go scripts before/after `up`
 
-
-- **pre-deploy**: Array of command
-- **post-deploy**: Array of command
+- **pre-deploy**: Array of command, executing before `up`
+- **post-deploy**: Array of command, executing after `up`
 
 ### Command specs:
 
-- **command**: like `["echo", "\"hello\""]`
-- **shell-key**: executing an inline shell of name starts with "x-"
+- **command**: any command like `["echo", "\"hello\""]`
+- **shell-key**: executing an inline shell of key starts with "x-"
 ```
 - ["shell-key", "x-a-b-shell"]
 ```
-- **igo-key**: executing an inline [gop script](https://goplus.org/) of name starts with "x-" name
+- **igo-key**: executing an inline [gop script](https://goplus.org/) of key starts with "x-"
 ```
 - ["igo-key", "x-b-c-igo"]
 ```
@@ -111,7 +109,8 @@ Executing some command/shell/go scripts before/after `up`
 
 ### Relative path/working directory
 
-1. All path in the `pre-deploy/post-deploy` are relative to the `docker-compose.yaml` if you set a relative path, eg: `/a/b/` 
+1. All path in the `pre-deploy/post-deploy` are relative to the `docker-compose.yaml` if you set a relative path, eg: `/a/b/`
+
 2. Working directory of command is the path of `docker-compose.yaml`, eg: `/a/b/`
 
 ### Execution arguments
@@ -127,7 +126,7 @@ echo "hello"
 
 ```
 cd /a/b
-/usr/bin/sh x-a-b-shell.sh -f '/a/b/docker-compose.yaml' deploy service-1 service-2 -d --hook --other-arg1 --other-arg2
+/usr/bin/sh /usr/bin/sh x-a-b-shell.sh -f '/a/b/docker-compose.yaml' deploy service-1 service-2 -d --hook --other-arg1 --other-arg2
 ```
 
 - **igo-key**: all arguments
