@@ -1,0 +1,32 @@
+x-hooks:
+  pre-deploy:
+    - ["cp", "conf/app.json", "/etc/other.json"]
+    - ["sh", "scripts/abc.sh"]
+    - ["shell-key", "x-a-b-shell"]
+    - ["igo-key", "x-b-c-igo"]
+    - ["igo-path", "scripts/main.go"]
+
+  post-deploy:
+    - ["echo", "deployment successful"]
+
+
+x-a-b-shell: |
+  #!/bin/bash
+  echo "3, x-a-b-shell inline:"
+  if [ $# -gt 0 ]; then
+    echo "$@";
+  fi
+
+x-b-c-igo: |
+  import "fmt"
+  fmt.Printf("4, x-b-c-igo inline: %+q\n", os.Args)
+
+
+services:
+  service-1:
+    image: nginx:latest
+    container_name: nginx-1
+
+  service-2:
+    image: redis:latest
+    container_name: redis-2

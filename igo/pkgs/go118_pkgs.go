@@ -14,13 +14,14 @@ github.com/opencontainers/go-digest \
 github.com/mitchellh/mapstructure \
 github.com/docker/go-connections/nat \
 github.com/distribution/distribution/v3/reference \
+github.com/distribution/distribution/v3/digestset \
 github.com/bitly/go-simplejson
 */
 
 import (
 	_ "github.com/docker/compose/v2/igo/pkgs/github.com/bitly/go-simplejson"
-	_ "github.com/docker/compose/v2/igo/pkgs/github.com/compose-spec/compose-go/loader"
 	_ "github.com/docker/compose/v2/igo/pkgs/github.com/compose-spec/compose-go/types"
+	_ "github.com/docker/compose/v2/igo/pkgs/github.com/distribution/distribution/v3/digestset"
 	_ "github.com/docker/compose/v2/igo/pkgs/github.com/distribution/distribution/v3/reference"
 	_ "github.com/docker/compose/v2/igo/pkgs/github.com/docker/go-connections/nat"
 	_ "github.com/docker/compose/v2/igo/pkgs/github.com/mitchellh/mapstructure"

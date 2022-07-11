@@ -1,13 +1,16 @@
 package compose
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"github.com/compose-spec/compose-go/loader"
 	"github.com/compose-spec/compose-go/types"
 	"github.com/docker/compose/v2/igo"
 	"github.com/docker/compose/v2/pkg/api"
+	"github.com/sanathkr/go-yaml"
 	"github.com/spf13/cobra"
+	"io/ioutil"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -15,8 +18,8 @@ import (
 )
 
 type xHooks struct {
-	PreDeploy  types.ShellCommand `mapstructure:"pre-deploy"`
-	PostDeploy types.ShellCommand `mapstructure:"post-deploy"`
+	PreDeploy  []types.ShellCommand `mapstructure:"pre-deploy"`
+	PostDeploy []types.ShellCommand `mapstructure:"post-deploy"`
 }
 
 type hook struct {
@@ -31,38 +34,6 @@ func (h *hook) parse() error {
 	return loader.Transform(h.project.Extensions["x-hooks"], &h.xHooks)
 }
 
-func (h *hook) parseIGo(command string) (key string, content string, err error) {
-	if strings.HasPrefix(command, "igo-key:") {
-		if c, ok := h.project.Extensions[command[8:]].(string); ok {
-			return command[8:], c, nil
-		}
-		return "", "", fmt.Errorf("igo-key \"%s\" is not exists, or invalid string. key must starts with \"x-\"\n", command[4:])
-	} else if strings.HasPrefix(command, "igo-path:") {
-		return command[9:], "", nil
-	}
-
-	return "", "", nil
-}
-
-func (h *hook) executeIGo(vpath string, content string, createOptions createOptions, upOptions upOptions, pullOptions pullOptions, services []string) error {
-	i := igo.IGo{
-		Cmd:      h.cmd,
-		Project:  h.project,
-		Services: services,
-	}
-	return i.Run(vpath, content)
-}
-
-func (h *hook) executeIGoPath(path string, createOptions createOptions, upOptions upOptions, pullOptions pullOptions, services []string) error {
-	i := igo.IGo{
-		Cmd:      h.cmd,
-		Project:  h.project,
-		Services: services,
-	}
-
-	return i.RunPath(path)
-}
-
 func (h *hook) PreDeploy(createOptions createOptions, upOptions upOptions, pullOptions pullOptions, services []string) error {
 	return h.handle(h.xHooks.PreDeploy, createOptions, upOptions, pullOptions, services)
 }
@@ -71,33 +42,121 @@ func (h *hook) PostDeploy(createOptions createOptions, upOptions upOptions, pull
 	return h.handle(h.xHooks.PostDeploy, createOptions, upOptions, pullOptions, services)
 }
 
-func (h *hook) handle(command types.ShellCommand, createOptions createOptions, upOptions upOptions, pullOptions pullOptions, services []string) error {
+func (h *hook) handle(commands []types.ShellCommand, createOptions createOptions, upOptions upOptions, pullOptions pullOptions, services []string) error {
+	for _, command := range commands {
+		if exe := h.parseCommand(command); exe != nil {
+
+			if err := exe.run(h, services); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func (h *hook) parseCommand(command types.ShellCommand) *execute {
 	if len(command) <= 0 {
 		return nil
 	}
 
 	workDir := filepath.Dir(h.project.ComposeFiles[0]) // 相對docker-compose.yml文件的工作目錄
-	// 檢查是否是igo
-	if len(command) == 1 && strings.HasPrefix(command[0], "igo-") {
-		key, content, err := h.parseIGo(command[0])
-		if err != nil {
-			return err
-		}
 
-		if content != "" {
-			return h.executeIGo(filepath.Join(workDir, key+".gop"), content, createOptions, upOptions, pullOptions, services)
-		} else if key != "" {
-			if !filepath.IsAbs(key) { // 改為相對於docker-compose.yml文件的工作目錄
-				key = filepath.Join(workDir, key)
+	if len(command) == 2 {
+		command[1] = strings.TrimSpace(command[1])
+		switch command[0] {
+		case "igo-key":
+			return &execute{
+				path:        filepath.Join(workDir, command[1]+".gop"),
+				content:     h.project.Extensions[command[1]].(string),
+				executeType: igoKey,
+				work:        workDir,
 			}
-			return h.executeIGoPath(key, createOptions, upOptions, pullOptions, services)
+		case "igo-path":
+			path := command[1]
+			if !filepath.IsAbs(path) { // 改為相對於docker-compose.yml文件的工作目錄
+				path = filepath.Join(workDir, path)
+			}
+			return &execute{
+				path:        path,
+				content:     "",
+				executeType: igoPath,
+				work:        workDir,
+			}
+		case "shell-key":
+			path := filepath.Join(workDir, command[1]+".sh")
+			return &execute{
+				path:        path,
+				content:     h.project.Extensions[command[1]].(string),
+				executeType: shellKey,
+				command:     append(types.ShellCommand{"/usr/bin/sh", path}, os.Args[2:]...),
+				work:        workDir,
+			}
 		}
 	}
 
-	cmd := exec.CommandContext(h.ctx, command[0], command[1:]...)
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	cmd.Dir = workDir
-	return cmd.Run()
+	return &execute{
+		executeType: shell,
+		command:     command,
+		work:        workDir,
+	}
+}
+
+type executeType string
+
+const (
+	igoKey   executeType = "igo-key"
+	igoPath              = "igo-path"
+	shell                = "shell"
+	shellKey             = "shell-key"
+)
+
+type execute struct {
+	path        string
+	content     string
+	work        string
+	executeType executeType
+	command     types.ShellCommand
+}
+
+func (e *execute) run(h *hook, services []string) error {
+	workDir := filepath.Dir(h.project.ComposeFiles[0]) // 相對docker-compose.yml文件的工作目錄
+
+	fmt.Printf("execute %s %s: %+q\n", e.executeType, e.path, e.command)
+
+	switch e.executeType {
+	case igoKey:
+		i := igo.IGo{
+			Cmd:      h.cmd,
+			Project:  h.project,
+			Services: services,
+		}
+		return i.Run(e.path, e.content)
+	case igoPath:
+		i := igo.IGo{
+			Cmd:      h.cmd,
+			Project:  h.project,
+			Services: services,
+		}
+		return i.RunPath(e.path)
+	case shellKey:
+		if err := ioutil.WriteFile(e.path, []byte(e.content), 0o644); err != nil {
+			return err
+		}
+		fallthrough
+	case shell:
+		yamlBuf, _ := yaml.Marshal(h.project)
+		var env []string
+		for k, v := range h.project.Environment {
+			env = append(env, k+"="+v)
+		}
+
+		cmd := exec.CommandContext(h.ctx, e.command[0], e.command[1:]...)
+		cmd.Stdin = bytes.NewBuffer(yamlBuf)
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		cmd.Dir = workDir
+		cmd.Env = env
+		return cmd.Run()
+	}
+	return nil
 }

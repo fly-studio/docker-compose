@@ -31,7 +31,7 @@ func deployCommand(p *projectOptions, backend api.Service) *cobra.Command {
 	pull := pullOptions{projectOptions: p}
 	deployCmd := &cobra.Command{
 		Use:                "deploy [SERVICE...]",
-		Short:              "Deploy containers(pull, up, and support executing pre-deploy/post-deploy shell, even executing gop)",
+		Short:              "Deploy containers(combine pull, up, and hooks. hook supported command, scripts of shell, golang+)",
 		FParseErrWhitelist: cobra.FParseErrWhitelist{UnknownFlags: true},
 		PreRunE: AdaptCmd(func(ctx context.Context, cmd *cobra.Command, args []string) error {
 			create.timeChanged = cmd.Flags().Changed("timeout")
@@ -76,6 +76,7 @@ func deployCommand(p *projectOptions, backend api.Service) *cobra.Command {
 	flags.BoolVar(&up.wait, "wait", false, "Wait for services to be running|healthy. Implies detached mode.")
 
 	flags.Bool("pull", false, "pull image if necessary")
+	flags.Bool("hook", false, "enable x-hooks, and will execute pre-deploy post-deploy")
 
 	return deployCmd
 }
@@ -89,30 +90,36 @@ func runDeploy(ctx context.Context, backend api.Service, createOptions createOpt
 	if !ok {
 		panic("cannot get the cmd from context")
 	}
-	h := hook{
-		ctx:     ctx,
-		cmd:     cmd,
-		project: project,
-		backend: backend,
-	}
-	if err := h.parse(); err != nil {
-		return err
-	}
-
-	if err := h.PreDeploy(createOptions, upOptions, pullOptions, services); err != nil {
-		return err
-	}
-
+	hookEnable, _ := cmd.Flags().GetBool("hook")
 	pullEnable, _ := cmd.Flags().GetBool("pull")
 	if pullEnable {
-		if err := runPull(h.ctx, h.backend, pullOptions, services); err != nil {
+		if err := runPull(ctx, backend, pullOptions, services); err != nil {
 			return err
 		}
 	}
 
-	if err := runUp(h.ctx, h.backend, createOptions, upOptions, h.project, services); err != nil {
-		return err
+	if hookEnable {
+		// 啟動hook
+		h := hook{
+			ctx:     ctx,
+			cmd:     cmd,
+			project: project,
+			backend: backend,
+		}
+		if err := h.parse(); err != nil {
+			return err
+		}
+
+		if err := h.PreDeploy(createOptions, upOptions, pullOptions, services); err != nil {
+			return err
+		}
+
+		if err := runUp(h.ctx, h.backend, createOptions, upOptions, h.project, services); err != nil {
+			return err
+		}
+
+		return h.PostDeploy(createOptions, upOptions, pullOptions, services)
 	}
 
-	return h.PostDeploy(createOptions, upOptions, pullOptions, services)
+	return runUp(ctx, backend, createOptions, upOptions, project, services)
 }

@@ -1,6 +1,7 @@
 package igo
 
 import (
+	"encoding/json"
 	"github.com/bitly/go-simplejson"
 	"github.com/compose-spec/compose-go/types"
 	"github.com/goplus/igop"
@@ -51,8 +52,12 @@ func GetProject() *types.Project {
 	return globalIGo.Project
 }
 
-func GetProjectJson() *simplejson.Json {
-	return nil
+func GetProjectJson() (*simplejson.Json, error) {
+	buf, err := json.Marshal(globalIGo.Project)
+	if err != nil {
+		return nil, err
+	}
+	return simplejson.NewJson(buf)
 }
 
 func (i *IGo) Run(vpath string, content string) error {
