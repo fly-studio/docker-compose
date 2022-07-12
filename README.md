@@ -1,9 +1,16 @@
 # Docker Compose v2 +
 
-A docker compose tool. Additional support: **HOOKS**, copy file/folder from image of service.
+A docker compose enhanced tool. 
 
-HOOKS supported executing shell, command, [gop](https://github.com/goplus/gop
-)(golang script, [interpreter](https://github.com/goplus/igop))
+Additional support: 
+
+- **HOOKs**
+
+  executing shell, command, [golang script](https://github.com/goplus/gop
+  )(via [interpreter](https://github.com/goplus/igop))
+
+- Copy file/folder from the image to the local filesystem.
+
 
 > Base on [docker/compose v2.6.1](https://github.com/docker/compose), Follow official updates unscheduled.
 
@@ -25,11 +32,12 @@ or (`ln -s` is recommended)
 ### Copy from image
 
 ```
-docker compose OPTIONS cpi [SERVICE] [PATH_IN_IMAGE] [LOCAL_PATH] --follow-link|-L
+docker compose [OPTIONS] cpi [SERVICE] [PATH_IN_IMAGE] [LOCAL_PATH] --follow-link
 ```
 
-copy a file/folder from image of the service to local filesystem
+Copy a file/folder from the image of the [SERVICE] to the local filesystem
 
+- `[OPTIONS]`: the options of `docker compose --help`
 - `[SERVICE]`: the service name that you want to copy from
 - `[PATH_IN_IMAGE]`: the path in the image of the `[SERVICE]`, source path
 - `[LOCAL_PATH]`: the path of local filesystem, destination path
@@ -42,14 +50,16 @@ docker compose -f "/a/b/docker-compose.yaml" cpi nginx /etc/nginx/conf /local/ng
 ```
 
 ### Hooks
+
 ```
-docker compose [OPTIONS] deploy [SERVICES...] [OPTIONS_OF_UP] --pull --hook
+docker compose [OPTIONS] deploy [SERVICE...] [OPTIONS_OF_UP] --pull --hook
 ```
 
-as same as `docker compose up`, but added the following arguments
+Create and start containers with HOOKs, be used in place of `docker compose up`.
 
-- `[SERVICES...]`: the list of services that you want to `up`
-- `[OPTIONS_OF_UP]`: the options of `up`, see `docker compose up --help`
+- `[OPTIONS]`: the options of `docker compose --help`
+- `[SERVICE...]`: the list of services that you want to `up`
+- `[OPTIONS_OF_UP]`: the options of `docker compose up --help`
 - `--pull` (default: false): pull the image before `up`
 - `--hook` (default: false): executing commands before/after `up`
 
@@ -141,29 +151,29 @@ docker compose deploy service-1 service-2 -d --hook --other-arg1 --other-arg2
 - **command**: nothing will change
 
 ```
-cd /a/b
-echo "hello"
+$ cd /a/b
+$ echo "hello"
 ```
 
 - **shell-key**: includes all arguments
 
 ```
-cd /a/b
-/usr/bin/sh /a/b/x-a-b-shell.sh -f '/a/b/docker-compose.yaml' deploy service-1 service-2 -d --hook --other-arg1 --other-arg2
+$ cd /a/b
+$ /usr/bin/sh /a/b/x-a-b-shell.sh -f '/a/b/docker-compose.yaml' deploy service-1 service-2 -d --hook --other-arg1 --other-arg2
 ```
 
 - **igo-key**: includes all arguments
  
 ```
-cd /a/b 
-/a/b/x-b-c-igo.gop -f '/a/b/docker-compose.yaml' deploy service-1 service-2 -d --hook --other-arg1 --other-arg2
+$ cd /a/b 
+$ /a/b/x-b-c-igo.gop -f '/a/b/docker-compose.yaml' deploy service-1 service-2 -d --hook --other-arg1 --other-arg2
 ```
 
 - **igo-path**: includes all arguments
 
 ```
-cd /a/b 
-/a/b/scripts/main.go -f '/a/b/docker-compose.yaml' deploy service-1 service-2 -d --hook --other-arg1 --other-arg2
+$ cd /a/b 
+$ /a/b/scripts/main.go -f '/a/b/docker-compose.yaml' deploy service-1 service-2 -d --hook --other-arg1 --other-arg2
 ```
 
 ### Golang script
