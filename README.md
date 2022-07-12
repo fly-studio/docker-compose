@@ -25,9 +25,9 @@ or (`ln -s` is recommended)
 `deploy` is as same as `docker compose up`, but added the following arguments
 
 - `--pull` (default: false): pull the image before `up`
-- `--hook` (default: false): executing some command before/after `up`
+- `--hook` (default: false): executing commands before/after `up`
 
-You can set custom arguments(see [cli example](#CLI)), they can be read in the shell/golang scripts
+You can set any custom arguments(see [cli example](#CLI)), they can be read in the shell/golang scripts
 
 ## Execution sequence
 
@@ -58,6 +58,7 @@ Files were in `/this/project/examples/`, copy to `/a/b/` where you want to put
 ```
 
 ### docker-compose.yaml
+
 ```
 x-hooks:
   pre-deploy:
@@ -109,9 +110,9 @@ Executing command/shell/go scripts before/after `up`
 
 ### Relative path/working directory
 
-1. All path in the `pre-deploy/post-deploy` are relative to the `docker-compose.yaml` if you set a relative path, eg: `/a/b/`
+1. All path in the `pre-deploy/post-deploy` are relative to the `docker-compose.yaml` if you set a relative path, eg: `scripts/main.go` is `/a/b/scripts/main.go`
 
-2. Working directory of command is the path of `docker-compose.yaml`, eg: `/a/b/`
+2. Working directory is the directory of `docker-compose.yaml`, eg: `/a/b/`
 
 ### Execution arguments
 
@@ -122,25 +123,25 @@ cd /a/b
 echo "hello"
 ```
 
-- **shell-key**: all arguments
+- **shell-key**: includes all arguments
 
 ```
 cd /a/b
-/usr/bin/sh /usr/bin/sh x-a-b-shell.sh -f '/a/b/docker-compose.yaml' deploy service-1 service-2 -d --hook --other-arg1 --other-arg2
+/usr/bin/sh /a/b/x-a-b-shell.sh -f '/a/b/docker-compose.yaml' deploy service-1 service-2 -d --hook --other-arg1 --other-arg2
 ```
 
-- **igo-key**: all arguments
+- **igo-key**: includes all arguments
  
 ```
 cd /a/b 
-./x-b-c-igo.gop -f '/a/b/docker-compose.yaml' deploy service-1 service-2 -d --hook --other-arg1 --other-arg2
+/a/b/x-b-c-igo.gop -f '/a/b/docker-compose.yaml' deploy service-1 service-2 -d --hook --other-arg1 --other-arg2
 ```
 
-- **igo-path**: all arguments
+- **igo-path**: includes all arguments
 
 ```
 cd /a/b 
-/scripts/main.go -f '/a/b/docker-compose.yaml' deploy service-1 service-2 -d --hook --other-arg1 --other-arg2
+/a/b/scripts/main.go -f '/a/b/docker-compose.yaml' deploy service-1 service-2 -d --hook --other-arg1 --other-arg2
 ```
 
 ## Golang script
