@@ -1,9 +1,11 @@
 # Docker Compose with hooks v2 
 
-A docker compose tool with hooks, supported executing shell, command, [gop](https://github.com/goplus/gop
+A docker compose tool, Additional support:  **HOOKS**, copy file/folder from image of service.
+
+HOOKS supported executing shell, command, [gop](https://github.com/goplus/gop
 )(golang script, [interpreter](https://github.com/goplus/igop))
 
-Base on [docker/compose v2.6.1](https://github.com/docker/compose), Follow official updates unscheduled.
+> Base on [docker/compose v2.6.1](https://github.com/docker/compose), Follow official updates unscheduled.
 
 ## Install
 
@@ -20,18 +22,45 @@ or (`ln -s` is recommended)
 
 ## Usage
 
-### docker compose deploy --pull --hook
+### Copy from image
 
-`deploy` is as same as `docker compose up`, but added the following arguments
+```
+docker compose OPTIONS cpi [SERVICE] [PATH_IN_IMAGE] [LOCAL_PATH] --follow-link|-L
+```
 
+copy a file/folder from image of the service to local filesystem
+
+- `[SERVICE]`: the service name that you want to copy from
+- `[PATH_IN_IMAGE]`: the path in the image of the `[SERVICE]`, source path
+- `[LOCAL_PATH]`: the path of local filesystem, destination path
+- `--follow-link | -L`: always follow symbol link in `[PATH_IN_IMAGE]`
+
+#### Examples
+
+```
+docker compose -f "/a/b/docker-compose.yaml" cpi nginx /etc/nginx/conf /local/nginx-conf/
+```
+
+### Hooks
+```
+docker compose [OPTIONS] deploy [SERVICES...] [OPTIONS_OF_UP] --pull --hook
+```
+
+as same as `docker compose up`, but added the following arguments
+
+- `[SERVICES...]`: the list of services that you want to `up`
+- `[OPTIONS_OF_UP]`: the options of `up`, see `docker compose up --help`
 - `--pull` (default: false): pull the image before `up`
 - `--hook` (default: false): executing commands before/after `up`
 
-You can set any custom arguments(see [cli example](#CLI)), they can be read in the shell/golang scripts
+> You can specify any custom arguments(see [cli example](#CLI)), they can be read in the shell/golang scripts
 
-## Execution sequence
+- **pre-deploy**: Array of command, executing before `up`
+- **post-deploy**: Array of command, executing after `up`
 
-1. `docker compose pull`
+#### Execution sequence
+
+1. `docker compose pull` if `--pull` be specified
 2. **pre-deploy** of hooks
    1. command 1
    2. command 2
@@ -42,7 +71,7 @@ You can set any custom arguments(see [cli example](#CLI)), they can be read in t
     2. command 2
     3. ...
 
-## Examples
+#### Examples
 
 Files were in `/this/project/examples/`, copy to `/a/b/` where you want to put
 
@@ -57,7 +86,7 @@ Files were in `/this/project/examples/`, copy to `/a/b/` where you want to put
       - abc.sh
 ```
 
-### docker-compose.yaml
+##### docker-compose.yaml
 
 ```
 x-hooks:
@@ -72,7 +101,7 @@ services:
   ...
 ```
 
-### CLI
+##### CLI
 
 like `docker compose up`
 
@@ -85,36 +114,29 @@ cd /a/b/
 docker compose deploy service-1 service-2 -d --hook --other-arg1 --other-arg2
 ```
 
-## Hooks
-
-Executing command/shell/go scripts before/after `up`
-
-- **pre-deploy**: Array of command, executing before `up`
-- **post-deploy**: Array of command, executing after `up`
-
-### Command specs:
+#### Command specs:
 
 - **command**: any command like `["echo", "\"hello\""]`
 - **shell-key**: executing an inline shell of key starts with "x-"
 ```
-- ["shell-key", "x-a-b-shell"]
+["shell-key", "x-a-b-shell"]
 ```
 - **igo-key**: executing an inline [gop script](https://goplus.org/) of key starts with "x-"
 ```
-- ["igo-key", "x-b-c-igo"]
+["igo-key", "x-b-c-igo"]
 ```
 - **igo-path**: a path of golang file included `package main` & `func main()`
 ```
-- ["igo-path", "scripts/main.go"]
+["igo-path", "scripts/main.go"]
 ```
 
-### Relative path/working directory
+#### Relative path/working directory
 
 1. All path in the `pre-deploy/post-deploy` are relative to the `docker-compose.yaml` if you set a relative path, eg: `scripts/main.go` is `/a/b/scripts/main.go`
 
 2. Working directory is the directory of `docker-compose.yaml`, eg: `/a/b/`
 
-### Execution arguments
+#### Execution arguments
 
 - **command**: nothing will change
 
@@ -144,6 +166,6 @@ cd /a/b
 /a/b/scripts/main.go -f '/a/b/docker-compose.yaml' deploy service-1 service-2 -d --hook --other-arg1 --other-arg2
 ```
 
-## Golang script
+### Golang script
 
 ToDo

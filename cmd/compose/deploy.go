@@ -20,12 +20,13 @@ import (
 	"context"
 	"fmt"
 	"github.com/compose-spec/compose-go/types"
+	"github.com/docker/cli/cli/command"
 	"github.com/docker/compose/v2/pkg/api"
 	"github.com/docker/compose/v2/pkg/utils"
 	"github.com/spf13/cobra"
 )
 
-func deployCommand(p *projectOptions, backend api.Service) *cobra.Command {
+func deployCommand(p *projectOptions, dockerCli command.Cli, backend api.Service) *cobra.Command {
 	up := upOptions{}
 	create := createOptions{}
 	pull := pullOptions{projectOptions: p}
