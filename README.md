@@ -1,6 +1,6 @@
-# Docker Compose with hooks v2 
+# Docker Compose v2 +
 
-A docker compose tool, Additional support:  **HOOKS**, copy file/folder from image of service.
+A docker compose tool. Additional support: **HOOKS**, copy file/folder from image of service.
 
 HOOKS supported executing shell, command, [gop](https://github.com/goplus/gop
 )(golang script, [interpreter](https://github.com/goplus/igop))
