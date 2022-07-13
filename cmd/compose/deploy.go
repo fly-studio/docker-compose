@@ -45,7 +45,7 @@ func deployCommand(p *projectOptions, dockerCli command.Cli, backend api.Service
 			if create.ignoreOrphans && create.removeOrphans {
 				return fmt.Errorf("COMPOSE_IGNORE_ORPHANS and --remove-orphans cannot be combined")
 			}
-			return runDeploy(ctx, backend, create, up, pull, project, services)
+			return runDeploy(ctx, dockerCli, backend, create, up, pull, project, services)
 		}),
 		ValidArgsFunction: serviceCompletion(p),
 	}
@@ -82,7 +82,7 @@ func deployCommand(p *projectOptions, dockerCli command.Cli, backend api.Service
 	return deployCmd
 }
 
-func runDeploy(ctx context.Context, backend api.Service, createOptions createOptions, upOptions upOptions, pullOptions pullOptions, project *types.Project, services []string) error {
+func runDeploy(ctx context.Context, dockerCli command.Cli, backend api.Service, createOptions createOptions, upOptions upOptions, pullOptions pullOptions, project *types.Project, services []string) error {
 	if len(project.Services) == 0 {
 		return fmt.Errorf("no service selected")
 	}
@@ -99,27 +99,40 @@ func runDeploy(ctx context.Context, backend api.Service, createOptions createOpt
 		}
 	}
 
+	// 啟動hook
 	if hookEnable {
-		// 啟動hook
-		h := hook{
-			ctx:     ctx,
-			cmd:     cmd,
-			project: project,
-			backend: backend,
-		}
+		h := newHook(ctx, cmd, dockerCli, backend, project)
+		// 解析x-hooks
 		if err := h.parse(); err != nil {
 			return err
 		}
 
-		if err := h.PreDeploy(createOptions, upOptions, pullOptions, services); err != nil {
+		// 全局 pre-deploy
+		if err := h.PreDeploy(createOptions, upOptions, pullOptions, nil); err != nil {
 			return err
 		}
 
+		// service pre-deploy
+		for k := range project.Services {
+			if err := h.PreDeploy(createOptions, upOptions, pullOptions, &project.Services[k]); err != nil {
+				return err
+			}
+		}
+
+		// up
 		if err := runUp(h.ctx, h.backend, createOptions, upOptions, h.project, services); err != nil {
 			return err
 		}
 
-		return h.PostDeploy(createOptions, upOptions, pullOptions, services)
+		// services post-deploy
+		for k := range project.Services {
+			if err := h.PostDeploy(createOptions, upOptions, pullOptions, &project.Services[k]); err != nil {
+				return err
+			}
+		}
+
+		// 全局 post-deploy
+		return h.PostDeploy(createOptions, upOptions, pullOptions, nil)
 	}
 
 	return runUp(ctx, backend, createOptions, upOptions, project, services)

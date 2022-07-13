@@ -1,12 +1,9 @@
 package igo
 
 import (
-	"encoding/json"
-	"github.com/bitly/go-simplejson"
 	"github.com/compose-spec/compose-go/types"
 	"github.com/goplus/igop"
 	"github.com/spf13/cobra"
-	"os"
 	"reflect"
 )
 
@@ -27,9 +24,9 @@ func init() {
 		NamedTypes: map[string]igop.NamedType{},
 		Vars:       map[string]reflect.Value{},
 		Funcs: map[string]reflect.Value{
-			"GetCmd":         reflect.ValueOf(GetCmd),
-			"GetProject":     reflect.ValueOf(GetProject),
-			"GetProjectJson": reflect.ValueOf(GetProjectJson),
+			"GetCmd":     reflect.ValueOf(GetCmd),
+			"GetService": reflect.ValueOf(GetService),
+			"GetProject": reflect.ValueOf(GetProject),
 		},
 		TypedConsts:   map[string]igop.TypedConst{},
 		UntypedConsts: map[string]igop.UntypedConst{},
@@ -37,9 +34,10 @@ func init() {
 }
 
 type IGo struct {
-	Cmd      *cobra.Command
-	Project  *types.Project
-	Services []string
+	Cmd     *cobra.Command
+	Project *types.Project
+	Service *types.ServiceConfig
+	Args    types.ShellCommand
 }
 
 var globalIGo IGo
@@ -48,16 +46,12 @@ func GetCmd() *cobra.Command {
 	return globalIGo.Cmd
 }
 
-func GetProject() *types.Project {
-	return globalIGo.Project
+func GetService() *types.ServiceConfig {
+	return globalIGo.Service
 }
 
-func GetProjectJson() (*simplejson.Json, error) {
-	buf, err := json.Marshal(globalIGo.Project)
-	if err != nil {
-		return nil, err
-	}
-	return simplejson.NewJson(buf)
+func GetProject() *types.Project {
+	return globalIGo.Project
 }
 
 func (i *IGo) Run(vpath string, content string) error {
@@ -67,7 +61,7 @@ func (i *IGo) Run(vpath string, content string) error {
 	if vpath == "" {
 		vpath = "main.gop"
 	}
-	_, err := igop.RunFile(vpath, content, os.Args[2:], 0)
+	_, err := igop.RunFile(vpath, content, i.Args, 0)
 	return err
 }
 
@@ -75,6 +69,6 @@ func (i *IGo) RunPath(path string) error {
 	// 暫時沒有處理多線程下的運行衝突問題
 	globalIGo = *i
 
-	_, err := igop.Run(path, os.Args[2:], 0)
+	_, err := igop.Run(path, i.Args, 0)
 	return err
 }

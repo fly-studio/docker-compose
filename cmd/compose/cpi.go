@@ -21,8 +21,16 @@ import (
 	"time"
 )
 
+type copyImageOptions struct {
+	*projectOptions
+	source      string
+	destination string
+	followLink  bool
+	overwrite   bool
+}
+
 func cpiCommand(p *projectOptions, dockerCli command.Cli, backend api.Service) *cobra.Command {
-	opts := copyOptions{
+	opts := copyImageOptions{
 		projectOptions: p,
 	}
 	cpiCmd := &cobra.Command{
@@ -33,35 +41,39 @@ func cpiCommand(p *projectOptions, dockerCli command.Cli, backend api.Service) *
 			return nil
 		}),
 		RunE: Adapt(func(ctx context.Context, args []string) error {
-			service := args[0]
-			source := args[1]
-			destination := args[2]
+			serviceName := args[0]
+			opts.source = args[1]
+			opts.destination = args[2]
 
-			project, err := p.toProject([]string{service})
+			project, err := p.toProject([]string{serviceName})
 			if err != nil {
 				return err
-			} else if len(project.Services) != 1 {
-				return fmt.Errorf("service not found: %s", service)
 			}
 
-			return runCpi(ctx, dockerCli, project, opts, source, destination)
+			service, err := project.GetService(serviceName)
+			if err != nil {
+				return err
+			}
+
+			return runCpi(ctx, dockerCli, project, &service, opts)
 		}),
 		ValidArgsFunction: serviceCompletion(p),
 	}
 
 	flags := cpiCmd.Flags()
 	flags.BoolVarP(&opts.followLink, "follow-link", "L", false, "Always follow symbol link in PATH_IN_IMAGE")
+	//flags.BoolVarP(&opts.overwrite, "overwrite", "O", false, "overwrite the file if exists of local filesystem")
 
 	return cpiCmd
 }
 
-func runCpi(ctx context.Context, dockerCli command.Cli, project *types.Project, opts copyOptions, source, destination string) error {
+func runCpi(ctx context.Context, dockerCli command.Cli, project *types.Project, service *types.ServiceConfig, opts copyImageOptions) error {
 	rand.Seed(time.Now().UnixNano())
-	service := project.Services[0]
+
 	name := service.Name + "-cp-temp-" + strconv.Itoa(rand.Intn(1000000))
 
 	// https://stackoverflow.com/questions/25292198/docker-how-can-i-copy-a-file-from-an-image-to-a-host
-	fmt.Printf(" - Create temporary container \"%s\" of image: [%s]\n", name, service.Image)
+	fmt.Printf(" + Create temporary container \"%s\" of image: [%s]\n", name, service.Image)
 	if _, err := dockerCli.Client().ContainerCreate(ctx, &container.Config{
 		Env:             []string{},
 		Cmd:             strslice.StrSlice(service.Command),
@@ -74,26 +86,26 @@ func runCpi(ctx context.Context, dockerCli command.Cli, project *types.Project, 
 		return err
 	}
 
-	fmt.Printf(" - Copy %s of image: [%s] to %s\n", source, service.Image, destination)
-	if err := os.MkdirAll(destination, 0644); err != nil {
+	fmt.Printf(" + Copy %s to %s\n", opts.source, opts.destination)
+	if err := os.MkdirAll(opts.destination, 0644); err != nil {
 		return err
 	}
-	if err := copyFromContainer(ctx, dockerCli, name, source, destination, opts.followLink); err != nil {
+	if err := copyFromContainer(ctx, dockerCli, name, opts); err != nil {
 		return err
 	}
 
-	fmt.Printf(" - Remove temporary container \"%s\" of image: [%s]\n", name, service.Image)
+	fmt.Printf(" + Remove temporary container \"%s\" \n", name)
 	if err := dockerCli.Client().ContainerRemove(ctx, name, cliTypes.ContainerRemoveOptions{}); err != nil {
 		return err
 	}
 
-	fmt.Printf("Copy successful from image: [%s]", service.Image)
-
 	return nil
 }
 
-func copyFromContainer(ctx context.Context, dockerCli command.Cli, containerID, srcPath, dstPath string, followLink bool) error {
+func copyFromContainer(ctx context.Context, dockerCli command.Cli, containerID string, opts copyImageOptions) error {
 	var err error
+	dstPath := opts.destination
+	srcPath := opts.source
 	if dstPath != "-" {
 		// Get an absolute destination path.
 		dstPath, err = resolveLocalPath(dstPath)
@@ -108,7 +120,7 @@ func copyFromContainer(ctx context.Context, dockerCli command.Cli, containerID, 
 
 	// if client requests to follow symbol link, then must decide target file to be copied
 	var rebaseName string
-	if followLink {
+	if opts.followLink {
 		srcStat, err := dockerCli.Client().ContainerStatPath(ctx, containerID, srcPath)
 
 		// If the destination is a symbolic link, we should follow it.

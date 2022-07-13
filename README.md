@@ -2,9 +2,13 @@
 
 A docker compose enhanced tool. 
 
+> Base on [docker/compose v2.6.1](https://github.com/docker/compose), Follow official updates unscheduled.
+
+---
+
 Additional support: 
 
-- **HOOKs**
+- HOOKs
 
   executing shell, command, [golang script](https://github.com/goplus/gop
   )(via [interpreter](https://github.com/goplus/igop))
@@ -12,7 +16,13 @@ Additional support:
 - Copy file/folder from the image to the local filesystem.
 
 
-> Base on [docker/compose v2.6.1](https://github.com/docker/compose), Follow official updates unscheduled.
+## TOC
+
+- [Install](#Install)
+- [Usage](#Usage)
+  - [Copy from image](#Copy-from-image)
+  - [Hooks](#Hooks)
+- [Golang script](#Golang script)
 
 ## Install
 
@@ -63,23 +73,24 @@ Create and start containers with HOOKs, be used in place of `docker compose up`.
 - `--pull` (default: false): pull the image before `up`
 - `--hook` (default: false): executing commands before/after `up`
 
-> You can specify any custom arguments(see [cli example](#CLI)), they can be read in the shell/golang scripts
+> You can specify any custom arguments(see [cli example](#Quick start)), they can be read in the shell/golang scripts
 
 - **pre-deploy**: Array of command, executing before `up`
 - **post-deploy**: Array of command, executing after `up`
 
 #### Execution sequence
 
-1. `docker compose pull` if `--pull` be specified
-2. **pre-deploy** of hooks
-   1. command 1
-   2. command 2
-   3. ...
-3. `docker compose up`
-4. **post-deploy** of hooks
-    1. command 1
-    2. command 2
-    3. ...
+1. `docker compose pull [SERVICE...]` if `--pull` be specified
+2. pre-deploy of global
+3. pre-deploy of each service of `[SERVICE...]` 
+4. `docker compose up [SERVICE...]`
+5. post-deploy of each service of `[SERVICE...]`
+6. post-deploy of global
+
+#### Relative path/working directory
+
+1. All path in the `pre-deploy/post-deploy` are relative to the `docker-compose.yaml` if you set a relative path, eg: `scripts/main.go` is `/a/b/scripts/main.go`
+2. Working directory is the directory of `docker-compose.yaml`, eg: `/a/b/`
 
 #### Examples
 
@@ -101,24 +112,35 @@ Files were in `/this/project/examples/`, copy to `/a/b/` where you want to put
 ```
 x-hooks:
   pre-deploy:
-    - []
-    - []
+    - ["shell-key", "x-a-b-shell"]
   post-deploy:
     - []
-    - []
-
+x-a-b-shell: |
+  echo "hello"
+      
 services:
-  ...
+  nginx:
+    container_name: nginx
+    image: nginx:latest
+    x-hooks:
+      pre-deploy:
+        - ["shell-key", "x-a-b-shell", "3"]
+      post-deploy:
+        - []
+    x-a-b-shell: |
+      ping 8.8.8.8 -c $2
 ```
 
-##### CLI
+##### Quick start
 
 like `docker compose up`
 
 ```
 docker compose -f '/a/b/docker-compose.yaml' deploy service-1 service-2 -d --hook --other-arg1 --other-arg2
 ```
+
 or
+
 ```
 cd /a/b/
 docker compose deploy service-1 service-2 -d --hook --other-arg1 --other-arg2
@@ -126,55 +148,91 @@ docker compose deploy service-1 service-2 -d --hook --other-arg1 --other-arg2
 
 #### Command specs:
 
-- **command**: any command like `["echo", "\"hello\""]`
-- **shell-key**: executing an inline shell of key starts with "x-"
+##### · command
+
+Any command 
+
 ```
-["shell-key", "x-a-b-shell"]
+- ["echo", "\"hello\""]`
 ```
-- **igo-key**: executing an inline [gop script](https://goplus.org/) of key starts with "x-"
+
+##### · shell-key
+
+executing an inline shell of key starts with "x-".
+
+- global pre-deploy/post-deploy will find the root key of "x-"
+- service pre-deploy/post-deploy, the key in service is preferred, then the root
+
 ```
-["igo-key", "x-b-c-igo"]
+- ["shell-key", "x-a-b-shell"]
 ```
-- **igo-path**: a path of golang file included `package main` & `func main()`
+Go to
+```
+$ cd /a/b
+$ /usr/bin/sh /a/b/x-a-b-shell.sh
+```
+
+##### · igo-key
+
+executing an inline [gop script](https://goplus.org/) of key starts with "x-"
+
+- global pre-deploy/post-deploy will find the root key of "x-"
+- service pre-deploy/post-deploy, the key in service is preferred, then the root
+
+
+```
+- ["igo-key", "x-b-c-igo"]
+```
+Go to
+```
+$ cd /a/b
+$ igop /a/b/x-b-c-igo.gop
+```
+
+##### · igo-path
+
+a path of golang file included `package main` & `func main()`
+
 ```
 ["igo-path", "scripts/main.go"]
 ```
-
-#### Relative path/working directory
-
-1. All path in the `pre-deploy/post-deploy` are relative to the `docker-compose.yaml` if you set a relative path, eg: `scripts/main.go` is `/a/b/scripts/main.go`
-
-2. Working directory is the directory of `docker-compose.yaml`, eg: `/a/b/`
+Go to
+```
+$ cd /a/b 
+$ igop /a/b/scripts/main.go 
+```
 
 #### Execution arguments
 
-- **command**: nothing will change
-
+##### · No change
 ```
-$ cd /a/b
-$ echo "hello"
-```
+- ["echo", "'hello' > 1.txt"]
+- ["igo-key", "x-b-c-igo", "--other"]
 
-- **shell-key**: includes all arguments
-
-```
-$ cd /a/b
-$ /usr/bin/sh /a/b/x-a-b-shell.sh -f '/a/b/docker-compose.yaml' deploy service-1 service-2 -d --hook --other-arg1 --other-arg2
+$ echo 'hello' > 1.txt
+$ igop /a/b/x-b-c-igo.gop --other
 ```
 
-- **igo-key**: includes all arguments
- 
+##### · Environment
+
+You can use the environment in `.env` or exported
 ```
-$ cd /a/b 
-$ /a/b/x-b-c-igo.gop -f '/a/b/docker-compose.yaml' deploy service-1 service-2 -d --hook --other-arg1 --other-arg2
+$ export SERVER_ID = 2
+- ["shell-key", "x-a-b-shell", "--server-id", "${SERVER_ID}"]
+
+$ sh /a/b/x-a-b-shell.sh --server-id 2
 ```
 
-- **igo-path**: includes all arguments
+##### · The arguments of `docker compose deploy ....`
+
+append all arguments
 
 ```
-$ cd /a/b 
-$ /a/b/scripts/main.go -f '/a/b/docker-compose.yaml' deploy service-1 service-2 -d --hook --other-arg1 --other-arg2
+- ["igo-path", "scripts/main.go", "--custom", "1", "{ARGS}"]
+
+$ igop /a/b/scripts/main.go --custom 1  -f '/a/b/docker-compose.yaml' deploy service-1 service-2 -d --hook --other-arg1 --other-arg2
 ```
+
 
 ### Golang script
 
