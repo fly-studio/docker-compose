@@ -18,15 +18,15 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 )
 
 type copyImageOptions struct {
 	*projectOptions
-	source      string
-	destination string
-	followLink  bool
-	overwrite   bool
+	paths      []string
+	followLink bool
+	overwrite  bool
 }
 
 func cpiCommand(p *projectOptions, dockerCli command.Cli, backend api.Service) *cobra.Command {
@@ -34,16 +34,23 @@ func cpiCommand(p *projectOptions, dockerCli command.Cli, backend api.Service) *
 		projectOptions: p,
 	}
 	cpiCmd := &cobra.Command{
-		Use:   "cpi [OPTIONS] [SERVICE] [PATH_IN_IMAGE] [LOCAL_PATH]",
+		Use:   "cpi [OPTIONS] [SERVICE] [PATH_IN_IMAGE:LOCAL_PATH...]",
 		Short: "Copy path from image of service to local filesystem",
-		Args:  cli.ExactArgs(3),
+		Args:  cli.ExactArgs(2),
 		PreRunE: AdaptCmd(func(ctx context.Context, cmd *cobra.Command, args []string) error {
+			if len(args) < 2 {
+				return fmt.Errorf("miss serivce or path, eg: \"cpi [service] [path_in_image:local_path]\"")
+			}
+			for _, path := range args[1:] {
+				if !strings.Contains(path, ":") {
+					return fmt.Errorf("path must be [path_in_image:local_path], yours: \"%s\"", path)
+				}
+			}
 			return nil
 		}),
 		RunE: Adapt(func(ctx context.Context, args []string) error {
 			serviceName := args[0]
-			opts.source = args[1]
-			opts.destination = args[2]
+			opts.paths = args[1:]
 
 			project, err := p.toProject([]string{serviceName})
 			if err != nil {
@@ -73,7 +80,7 @@ func runCpi(ctx context.Context, dockerCli command.Cli, project *types.Project, 
 	name := service.Name + "-cp-temp-" + strconv.Itoa(rand.Intn(1000000))
 
 	// https://stackoverflow.com/questions/25292198/docker-how-can-i-copy-a-file-from-an-image-to-a-host
-	fmt.Printf(" + Create temporary container \"%s\" of image: [%s]\n", name, service.Image)
+	//fmt.Printf(" + Create temporary container \"%s\" of image: [%s]\n", name, service.Image)
 	if _, err := dockerCli.Client().ContainerCreate(ctx, &container.Config{
 		Env:             []string{},
 		Cmd:             strslice.StrSlice(service.Command),
@@ -86,15 +93,17 @@ func runCpi(ctx context.Context, dockerCli command.Cli, project *types.Project, 
 		return err
 	}
 
-	fmt.Printf(" + Copy %s to %s\n", opts.source, opts.destination)
-	if err := os.MkdirAll(opts.destination, 0644); err != nil {
-		return err
-	}
-	if err := copyFromContainer(ctx, dockerCli, name, opts); err != nil {
-		return err
+	for _, path := range opts.paths {
+		segments := strings.SplitN(path, ":", 2)
+		source := segments[0]
+		destination := segments[1]
+		fmt.Printf(" - Copy %s to %s\n", source, destination)
+		if err := copyFromContainer(ctx, dockerCli, name, source, destination, opts); err != nil {
+			return err
+		}
 	}
 
-	fmt.Printf(" + Remove temporary container \"%s\" \n", name)
+	//fmt.Printf(" + Remove temporary container \"%s\" \n", name)
 	if err := dockerCli.Client().ContainerRemove(ctx, name, cliTypes.ContainerRemoveOptions{}); err != nil {
 		return err
 	}
@@ -102,10 +111,8 @@ func runCpi(ctx context.Context, dockerCli command.Cli, project *types.Project, 
 	return nil
 }
 
-func copyFromContainer(ctx context.Context, dockerCli command.Cli, containerID string, opts copyImageOptions) error {
+func copyFromContainer(ctx context.Context, dockerCli command.Cli, containerID string, srcPath, dstPath string, opts copyImageOptions) error {
 	var err error
-	dstPath := opts.destination
-	srcPath := opts.source
 	if dstPath != "-" {
 		// Get an absolute destination path.
 		dstPath, err = resolveLocalPath(dstPath)

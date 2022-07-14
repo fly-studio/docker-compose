@@ -42,21 +42,30 @@ or (`ln -s` is recommended)
 ### Copy from image
 
 ```
-docker compose [OPTIONS] cpi [SERVICE] [PATH_IN_IMAGE] [LOCAL_PATH] --follow-link
+docker compose [OPTIONS] cpi [SERVICE] [PATH_IN_IMAGE:LOCAL_PATH...] --follow-link
 ```
 
-Copy a file/folder from the image of the [SERVICE] to the local filesystem
+Copy a file/folder from the image of the SERVICE to the local filesystem
 
 - `[OPTIONS]`: the options of `docker compose --help`
 - `[SERVICE]`: the service name that you want to copy from
-- `[PATH_IN_IMAGE]`: the path in the image of the `[SERVICE]`, source path
-- `[LOCAL_PATH]`: the path of local filesystem, destination path
+- `[PATH_IN_IMAGE:LOCAL_PATH...]`: Array 
+  - `PATH_IN_IMAGE`: the source path in the image of the `[SERVICE]`
+  - `LOCAL_PATH`: the destination path of local filesystem
 - `--follow-link | -L`: always follow symbol link in `[PATH_IN_IMAGE]`
+
+#### LOCAL_PATH 
+
+- Can be a directory when `PATH_IN_IMAGE` is a file or folder
+- Can be a file when `PATH_IN_IMAGE` is a file, **the base directory of `LOCAL_PATH` MUST exist** 
 
 #### Examples
 
 ```
-docker compose -f "/a/b/docker-compose.yaml" cpi nginx /etc/nginx/conf /local/nginx-conf/
+mkdir -p /local/nginx/  ## path must exist ##
+docker compose -f "/a/b/docker-compose.yaml" cpi nginx \
+  /etc/nginx/conf:/local/nginx/ \ 
+  /etc/resolve.conf:/local/resolve.conf
 ```
 
 ### Hooks
