@@ -132,7 +132,7 @@ require (
 
 require (
 	github.com/bitly/go-simplejson v0.5.0
-	github.com/goplus/igop v0.7.9
+	github.com/goplus/igop v0.7.10
 )
 
 require (
