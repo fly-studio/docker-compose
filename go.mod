@@ -132,12 +132,12 @@ require (
 
 require (
 	github.com/bitly/go-simplejson v0.5.0
-	github.com/goplus/igop v0.7.9
+	github.com/goplus/igop v0.8.0
 )
 
 require (
 	github.com/cyberphone/json-canonicalization v0.0.0-20220623050100-57a0ce2678a7 // indirect
-	github.com/goplus/reflectx v0.9.0 // indirect
+	github.com/goplus/reflectx v0.9.3 // indirect
 	github.com/petermattis/goid v0.0.0-20220712135657-ac599d9cba15 // indirect
 	github.com/visualfc/funcval v0.1.3 // indirect
 	github.com/visualfc/xtype v0.1.0 // indirect
