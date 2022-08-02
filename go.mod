@@ -111,7 +111,7 @@ require (
 	golang.org/x/crypto v0.0.0-20220214200702-86341886e292 // indirect
 	golang.org/x/net v0.0.0-20220225172249-27dd8689420f // indirect
 	golang.org/x/oauth2 v0.0.0-20220411215720-9780585627b5 // indirect
-	golang.org/x/sys v0.0.0-20220712014510-0a85c31ab51e // indirect
+	golang.org/x/sys v0.0.0-20220722155257-8c9f86f7a55f // indirect
 	golang.org/x/term v0.0.0-20210927222741-03fcf44c2211 // indirect
 	golang.org/x/text v0.3.7 // indirect
 	golang.org/x/time v0.0.0-20220210224613-90d013bbcef8 // indirect
@@ -132,14 +132,15 @@ require (
 
 require (
 	github.com/bitly/go-simplejson v0.5.0
-	github.com/goplus/igop v0.7.9
+	github.com/goplus/igop v0.8.3
 )
 
 require (
 	github.com/cyberphone/json-canonicalization v0.0.0-20220623050100-57a0ce2678a7 // indirect
-	github.com/goplus/reflectx v0.9.0 // indirect
+	github.com/goplus/reflectx v0.9.5 // indirect
 	github.com/petermattis/goid v0.0.0-20220712135657-ac599d9cba15 // indirect
 	github.com/visualfc/funcval v0.1.3 // indirect
+	github.com/visualfc/gomod v0.1.2 // indirect
 	github.com/visualfc/xtype v0.1.0 // indirect
 	github.com/zmap/zcrypto v0.0.0-20220605182715-4dfcec6e9a8c // indirect
 	github.com/zmap/zlint v1.1.0 // indirect
